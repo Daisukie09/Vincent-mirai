@@ -1,31 +1,33 @@
 const axios = require("axios");
 
-if (!global.gptMemory) global.gptMemory = {}; // Store user conversation history
+if (!global.gptMemory) global.gptMemory = {};
 
 module.exports.config = {
   name: "gpt4",
   version: "1.2.0",
-  hasPermssion: 0,
+  permission: 0,
   credits: "ChatGPT",
-  description: "Chat with GPT-4 via Zen API (with memory)",
-  commandCategory: "ai",
-  usages: "[prompt]",
-  cooldowns: 5
+  description: "Chat with GPT-4 (with memory)",
+  prefix: false,
+  premium: false,
+  category: "without prefix",
+  usage: "gpt4 <question>",
+  cooldowns: 3,
+  dependency: {
+    "axios": ""
+  }
 };
 
 async function askGPT4(prompt, senderID) {
-  // Build conversation history
   const history = global.gptMemory[senderID] || [];
   history.push({ role: "user", content: prompt });
 
-  // Combine history into a single string for the API
   const fullPrompt = history.map(h => `${h.role}: ${h.content}`).join("\n");
-
   const url = `https://zen-api.gleeze.com/api/gpt4?prompt=${encodeURIComponent(fullPrompt)}&uid=${senderID}`;
+
   const res = await axios.get(url);
   const reply = res.data.response || res.data.message || "⚠️ No reply received.";
 
-  // Save AI's response to history
   history.push({ role: "assistant", content: reply });
   global.gptMemory[senderID] = history;
 
@@ -34,14 +36,21 @@ async function askGPT4(prompt, senderID) {
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
-  const prompt = args.join(" ");
-  if (!prompt) return api.sendMessage("⚠️ Please enter a prompt.", threadID, messageID);
+  const question = args.join(" ");
+
+  if (!question) {
+    return api.sendMessage(
+      "❌ Please enter a question.",
+      threadID,
+      messageID
+    );
+  }
 
   api.sendMessage("[ GPT-4 ]\n\nPlease wait...", threadID, async (err, info) => {
     if (err) return;
 
     try {
-      const reply = await askGPT4(prompt, senderID);
+      const reply = await askGPT4(question, senderID);
       api.editMessage(reply, info.messageID);
 
       if (!global.client.handleReply) global.client.handleReply = [];
@@ -50,8 +59,9 @@ module.exports.run = async function ({ api, event, args }) {
         messageID: info.messageID,
         author: senderID
       });
-    } catch {
-      api.editMessage("❌ Failed to get response.", info.messageID);
+    } catch (error) {
+      console.error("❌ GPT-4 Error:", error?.response?.data || error.message || error);
+      api.editMessage("❌ Error retrieving response.", info.messageID);
     }
   }, messageID);
 };
@@ -72,8 +82,9 @@ module.exports.handleReply = async function ({ api, event }) {
         messageID: info.messageID,
         author: senderID
       });
-    } catch {
-      api.editMessage("❌ Failed to get response.", info.messageID);
+    } catch (error) {
+      console.error("❌ GPT-4 Error:", error?.response?.data || error.message || error);
+      api.editMessage("❌ Error retrieving response.", info.messageID);
     }
   }, messageID);
 };
